@@ -1,9 +1,7 @@
 <?php
 
 /**
- * @author Amasty Team
- * @copyright Copyright (c) 2021 Amasty (https://www.amasty.com)
- * @package Amasty_Rules
+ * @copyright   Copyright (c) 2009-11 Amasty
  */
 class Amasty_Rules_Model_Observer
 {
@@ -259,9 +257,30 @@ class Amasty_Rules_Model_Observer
         $customerGroupId = $quote->getCustomerGroupId();
         $couponCode = $quote->getCouponCode();
 
-        $this->rules = Mage::getResourceModel('salesrule/rule_collection')
-            ->setValidationFilter($websiteId, $customerGroupId, $couponCode)
-            ->addFieldToFilter('sort_order', array('lt'=> $rule->getSortOrder()))
+        $this->rules = Mage::getResourceModel('salesrule/rule_collection');
+
+        $this->rules->getSelect()->where('is_active=1');
+        $this->rules->getSelect()->where('find_in_set(?, website_ids)', (int)$websiteId);
+        $this->rules->getSelect()->where('find_in_set(?, customer_group_ids)', (int)$customerGroupId);
+
+        if ($couponCode) {
+            $this->rules->getSelect()->joinLeft(
+                array('extra_coupon' => $this->rules->getTable('salesrule/coupon')),
+                'extra_coupon.rule_id = main_table.rule_id AND extra_coupon.is_primary IS NULL',
+                array()
+            );
+            $this->rules->getSelect()->group('main_table.rule_id');
+            $this->rules->getSelect()->where(''
+                . $this->rules->getSelect()->getAdapter()->quoteInto('primary_coupon.code = ?', $couponCode)
+            );
+            $this->rules->getSelect()->having(''
+                . $this->rules->getSelect()->getAdapter()->quoteInto('FIND_IN_SET(?, GROUP_CONCAT(extra_coupon.code))', $couponCode)
+            );
+        }
+
+        $this->rules->getSelect()->order('sort_order');
+
+        $this->rules->addFieldToFilter('sort_order', array('lt'=> $rule->getSortOrder()))
             ->load();
         
         return $this->rules;
